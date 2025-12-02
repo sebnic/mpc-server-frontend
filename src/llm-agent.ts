@@ -69,6 +69,11 @@ IMPORTANT:
     const maxIterations = 5;
     let iteration = 0;
 
+    console.log('[Agent] 💬 Starting new chat:', {
+      message: userMessage,
+      availableTools: this.tools.map(t => t.name),
+    });
+
     // Add user message to history
     this.conversationHistory.push({
       role: 'user',
@@ -97,10 +102,21 @@ IMPORTANT:
 
       if (toolCall) {
         // Execute the tool
-        console.log('[Agent] Executing tool:', toolCall.name, toolCall.arguments);
+        console.log('[Agent] 🔧 LLM decided to use a tool:', {
+          tool: toolCall.name,
+          arguments: toolCall.arguments,
+          iteration: iteration,
+          timestamp: new Date().toISOString(),
+        });
         
         try {
           const toolResult = await this.toolExecutor(toolCall.name, toolCall.arguments);
+          console.log('[Agent] ✅ Tool execution completed:', {
+            tool: toolCall.name,
+            resultPreview: typeof toolResult === 'string' 
+              ? toolResult.substring(0, 100) + '...'
+              : JSON.stringify(toolResult).substring(0, 100) + '...',
+          });
           const resultText =
             toolResult.content?.[0]?.text || JSON.stringify(toolResult);
 

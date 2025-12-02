@@ -107,6 +107,45 @@ n stable
 npm install
 ```
 
+## ⚙️ Configuration
+
+Le projet supporte la configuration via variables d'environnement pour sécuriser vos clés API.
+
+### 1. Créer le fichier `.env`
+
+```bash
+cp .env.example .env
+```
+
+### 2. Configurer vos clés API
+
+Éditez `.env` et remplissez vos informations :
+
+```env
+# Gemini Configuration
+VITE_GEMINI_API_KEY=votre_clé_api_gemini_ici
+VITE_GEMINI_MODEL=gemini-1.5-flash
+
+# WebLLM Configuration (optionnel)
+VITE_WEBLLM_MODEL=Llama-3.2-1B-Instruct-q4f32_1-MLC
+
+# Provider par défaut
+VITE_DEFAULT_PROVIDER=gemini
+```
+
+### 🔒 Sécurité des Clés API
+
+Les clés API configurées dans `.env` sont :
+1. **Cryptées au démarrage** : Utilise AES-GCM-256 avec Web Crypto API
+2. **Stockées en mémoire** : Uniquement sous forme cryptée
+3. **Décryptées à la demande** : Seulement quand nécessaire
+4. **Liées à l'appareil** : Utilise un fingerprint du navigateur comme passphrase
+
+⚠️ **Important** : 
+- Le fichier `.env` est dans `.gitignore` (ne sera pas commité)
+- N'exposez jamais vos clés API dans le code
+- Pour la production, envisagez un backend proxy
+
 ## 💻 Développement
 
 ```bash
@@ -126,10 +165,14 @@ npm run preview
 
 Le serveur MCP implémente plusieurs outils de démonstration :
 
-### 🤖 Outils LLM (WebLLM)
-1. **llm_initialize** : Initialise un LLM local (Llama 3.2 1B, ~1GB)
-2. **llm_chat** : Discute avec le LLM local
+### 🤖 Outils LLM (Multi-Provider)
+1. **llm_initialize** : Initialise un LLM provider (WebLLM ou Gemini)
+2. **llm_chat** : Discute avec le LLM
 3. **llm_status** : Vérifie le statut du LLM
+
+**Providers supportés** :
+- **WebLLM** : Llama 3.2 1B local (~1GB), fonctionne 100% dans le navigateur
+- **Gemini** : Google Gemini API (nécessite une clé API)
 
 ### 🧠 Agent IA (Function Calling)
 4. **agent_chat** : Agent intelligent qui peut utiliser les outils MCP automatiquement
@@ -139,6 +182,25 @@ Le serveur MCP implémente plusieurs outils de démonstration :
 6. **get_time** : Retourne l'heure actuelle
 7. **echo** : Répète un message
 8. **calculate** : Effectue des calculs simples (add, subtract, multiply, divide)
+
+### 📊 Logging et Débogage
+
+Le système inclut un logging détaillé pour suivre les interactions entre le LLM agent et les outils MCP :
+
+**Console du navigateur (F12)** :
+```
+[Agent] 💬 Starting new chat: { message: "Quelle heure est-il?", availableTools: [...] }
+[Agent] 🔧 LLM decided to use a tool: { tool: "get_time", arguments: {}, iteration: 1 }
+[MCP Server] Received tool call: { tool: "get_time", arguments: {}, timestamp: "..." }
+[Agent] ✅ Tool execution completed: { tool: "get_time", resultPreview: "..." }
+```
+
+**Points de logging** :
+- 💬 Démarrage d'une conversation avec la liste des outils disponibles
+- 🔧 Décision du LLM d'utiliser un outil (nom, arguments, itération)
+- 📥 Réception de la requête côté serveur MCP
+- ✅ Résultat de l'exécution de l'outil
+- 🔄 Flux complet du function calling sur plusieurs itérations
 
 ## 📁 Structure du Projet
 
@@ -177,6 +239,10 @@ Ce POC démontre que :
 - ✅ L'architecture MCP est respectée
 - ✅ **Un LLM local peut tourner dans le Worker et être exposé via MCP**
 - ✅ WebLLM (Llama 3.2 1B) fonctionne entièrement dans le navigateur
+- ✅ **Function calling automatique** : l'agent LLM peut orchestrer plusieurs outils MCP
+- ✅ **Multi-provider** : Support de WebLLM (local) et Gemini API avec architecture extensible
+- ✅ **Sécurité** : Clés API cryptées avec AES-GCM-256
+- ✅ **Observabilité** : Logging détaillé pour déboguer le function calling
 
 ## 🚧 Limitations
 
@@ -193,6 +259,62 @@ Ce POC démontre que :
 - **Assistants IA 100% locaux et privés (pas de serveur externe)**
 - **Applications offline-first avec IA intégrée**
 
-## ⚠️ Note sur WebLLM
+## 🔑 Configuration des LLM Providers
 
-Au premier lancement, WebLLM téléchargera le modèle Llama 3.2 1B (~1GB). Le modèle est mis en cache dans le navigateur pour les utilisations futures. WebGPU est requis (Chrome/Edge récent ou Firefox avec flag activé).
+### WebLLM (Local)
+- **Prérequis** : WebGPU (Chrome 113+, Edge, ou Firefox avec flag)
+- **Premier lancement** : Télécharge ~1GB (mis en cache ensuite)
+- **Configuration** : Optionnelle dans `.env` (variable `VITE_WEBLLM_MODEL`)
+- **Avantages** : 100% local, privé, gratuit
+- **Inconvénients** : Nécessite WebGPU, plus lent
+
+### Gemini (API)
+- **Prérequis** : Clé API Google (gratuite sur https://makersuite.google.com/app/apikey)
+- **Configuration** : Dans `.env` (variable `VITE_GEMINI_API_KEY`)
+- **Avantages** : Rapide, puissant, pas de téléchargement
+- **Inconvénients** : Nécessite Internet, quotas API
+
+### Obtenir une clé API Gemini
+
+1. Visitez https://makersuite.google.com/app/apikey
+2. Connectez-vous avec votre compte Google
+3. Créez une nouvelle clé API
+4. Copiez la clé dans `.env` → `VITE_GEMINI_API_KEY`
+
+## 🎨 Architecture Agnostique
+
+Le système utilise une architecture de **Provider Pattern** :
+```typescript
+interface LLMProvider {
+  initialize(config): Promise<void>;
+  chat(messages): Promise<Response>;
+  getStatus(): Status;
+}
+```
+
+### Gestion Sécurisée des Configurations
+
+```
+┌────────────────────────────────────────────────────┐
+│              Démarrage Application                  │
+└────────────────┬───────────────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────────────┐
+│     ConfigManager.initialize()                     │
+│  1. Charge variables d'environnement (.env)        │
+│  2. Génère passphrase device-specific             │
+│  3. Crypte les clés API (AES-GCM-256)             │
+│  4. Stocke en mémoire (forme cryptée)             │
+└────────────────┬───────────────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────────────┐
+│     Utilisation Runtime                            │
+│  - getConfig(): Décrypte à la demande             │
+│  - setGeminiApiKey(): Crypte nouvelle clé         │
+│  - Clés jamais en clair dans le code              │
+└────────────────────────────────────────────────────┘
+```
+
+Facile d'ajouter d'autres providers (OpenAI, Anthropic, Mistral, etc.) sans modifier le reste du code !

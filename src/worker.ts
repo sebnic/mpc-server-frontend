@@ -47,15 +47,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   availableTools = [
       {
         name: 'llm_initialize',
-        description: 'Initialize the local LLM (Llama 3.2 1B). This downloads the model (~1GB) if not cached.',
+        description: 'Initialize an LLM provider. Supports WebLLM (local) or Gemini (API).',
         inputSchema: {
           type: 'object',
           properties: {
-            modelId: {
+            provider: {
               type: 'string',
-              description: 'Model ID to load (default: Llama-3.2-1B-Instruct-q4f32_1-MLC)',
+              enum: ['webllm', 'gemini'],
+              description: 'LLM provider to use (webllm or gemini)',
+            },
+            apiKey: {
+              type: 'string',
+              description: 'API key (required for Gemini)',
+            },
+            model: {
+              type: 'string',
+              description: 'Model to use (optional, provider-specific defaults)',
             },
           },
+          required: ['provider'],
         },
       },
       {
@@ -157,14 +167,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // Extract tool handling logic to reuse in agent
 async function handleToolCall(request: any): Promise<any> {
   const { name, arguments: args } = request.params;
+  
+  // Log incoming tool call
+  console.log('[MCP Server] Received tool call:', {
+    tool: name,
+    arguments: args,
+    timestamp: new Date().toISOString(),
+  });
 
   switch (name) {
     case 'llm_initialize': {
-      const modelId = (args as any)?.modelId || 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
+      const provider = (args as any)?.provider as 'webllm' | 'gemini';
+      const apiKey = (args as any)?.apiKey;
+      const model = (args as any)?.model;
       
+      if (!provider) {
+        throw new Error('Provider is required (webllm or gemini)');
+      }
+
+      if (provider === 'gemini' && !apiKey) {
+        throw new Error('API key is required for Gemini provider');
+      }
+
       try {
+        const config: any = { model };
+        if (apiKey) {
+          config.apiKey = apiKey;
+        }
+
         // Send progress updates via postMessage
-        await llmService.initialize(modelId, (report) => {
+        await llmService.initialize(provider, config, (report) => {
           self.postMessage({
             type: 'llm_progress',
             data: {
@@ -174,11 +206,12 @@ async function handleToolCall(request: any): Promise<any> {
           });
         });
 
+        const status = llmService.getStatus();
         return {
           content: [
             {
               type: 'text',
-              text: `LLM initialized successfully! Model: ${modelId}`,
+              text: `LLM initialized successfully! Provider: ${status.providerName}${model ? `, Model: ${model}` : ''}`,
             },
           ],
         };
@@ -296,10 +329,19 @@ async function handleToolCall(request: any): Promise<any> {
       }
 
       try {
+        console.log('[MCP Server] Agent starting conversation:', {
+          userMessage: message,
+          availableTools: availableTools.map(t => t.name),
+        });
+        
         // Set available tools for the agent (already cached in availableTools)
         llmAgent.setTools(availableTools);
 
         const response = await llmAgent.chat(message);
+        
+        console.log('[MCP Server] Agent completed conversation:', {
+          responseLength: response.length,
+        });
         return {
           content: [
             {

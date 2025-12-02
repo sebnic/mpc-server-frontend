@@ -169,6 +169,37 @@ h4 {
   border-radius: 6px;
 }
 
+.provider-selection {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.provider-selection label {
+  display: block;
+  margin: 0.5rem 0;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.provider-selection label:hover {
+  background: #f0f0f0;
+}
+
+.provider-selection input[type="radio"] {
+  margin-right: 0.5rem;
+}
+
+input[type="password"] {
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
 .progress-bar {
   position: relative;
   width: 100%;

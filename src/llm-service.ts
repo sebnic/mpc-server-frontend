@@ -1,86 +1,95 @@
-import * as webllm from '@mlc-ai/web-llm';
+import {
+  LLMProvider,
+  ChatMessage,
+  LLMProviderConfig,
+  InitProgressReport,
+} from './providers/llm-provider.interface.js';
+import { WebLLMProvider } from './providers/webllm-provider.js';
+import { GeminiProvider } from './providers/gemini-provider.js';
+
+export type ProviderType = 'webllm' | 'gemini';
 
 export class LLMService {
-  private engine: webllm.MLCEngineInterface | null = null;
-  private isInitializing = false;
-  private isReady = false;
+  private provider: LLMProvider | null = null;
+  private currentProviderType: ProviderType | null = null;
 
   async initialize(
-    modelId: string = 'Llama-3.2-1B-Instruct-q4f32_1-MLC',
-    onProgress?: (report: webllm.InitProgressReport) => void
+    providerType: ProviderType,
+    config: LLMProviderConfig,
+    onProgress?: (report: InitProgressReport) => void
   ): Promise<void> {
-    if (this.isReady) {
-      return;
-    }
-
-    if (this.isInitializing) {
-      // Wait for initialization to complete
-      while (this.isInitializing) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return;
-    }
-
-    this.isInitializing = true;
-
     try {
-      console.log('[LLM] Initializing WebLLM with model:', modelId);
-      
-      this.engine = await webllm.CreateMLCEngine(modelId, {
-        initProgressCallback: (report: webllm.InitProgressReport) => {
-          console.log('[LLM] Progress:', report.text, report.progress);
-          if (onProgress) {
-            onProgress(report);
-          }
-        },
-      });
+      console.log(`[LLM] Initializing ${providerType} provider...`);
 
-      this.isReady = true;
-      console.log('[LLM] WebLLM initialized successfully!');
+      // Create the appropriate provider
+      switch (providerType) {
+        case 'webllm':
+          this.provider = new WebLLMProvider();
+          break;
+        case 'gemini':
+          this.provider = new GeminiProvider();
+          break;
+        default:
+          throw new Error(`Unknown provider type: ${providerType}`);
+      }
+
+      // Initialize the provider
+      await this.provider.initialize(config, onProgress);
+      this.currentProviderType = providerType;
+
+      console.log(`[LLM] ${providerType} provider initialized successfully!`);
     } catch (error) {
       console.error('[LLM] Failed to initialize:', error);
+      this.provider = null;
+      this.currentProviderType = null;
       throw error;
-    } finally {
-      this.isInitializing = false;
     }
   }
 
-  async chat(messages: Array<{ role: string; content: string }>): Promise<string> {
-    if (!this.engine || !this.isReady) {
+  async chat(messages: ChatMessage[]): Promise<string> {
+    if (!this.provider) {
       throw new Error('LLM not initialized. Call initialize() first.');
     }
 
     try {
-      const reply = await this.engine.chat.completions.create({
-        messages,
-      });
-
-      return reply.choices[0]?.message?.content || '';
+      const response = await this.provider.chat(messages);
+      return response.content;
     } catch (error) {
       console.error('[LLM] Chat error:', error);
       throw error;
     }
   }
 
-  async generate(prompt: string, temperature: number = 0.7): Promise<string> {
-    return this.chat([
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ]);
+  async generate(prompt: string): Promise<string> {
+    if (!this.provider) {
+      throw new Error('LLM not initialized. Call initialize() first.');
+    }
+
+    return this.provider.generate(prompt);
   }
 
-  getStatus(): { isReady: boolean; isInitializing: boolean } {
-    return {
-      isReady: this.isReady,
-      isInitializing: this.isInitializing,
-    };
+  getStatus(): { 
+    isReady: boolean; 
+    isInitializing: boolean; 
+    providerName?: string;
+  } {
+    if (!this.provider) {
+      return {
+        isReady: false,
+        isInitializing: false,
+      };
+    }
+
+    return this.provider.getStatus();
+  }
+
+  getCurrentProvider(): ProviderType | null {
+    return this.currentProviderType;
   }
 
   async reset(): Promise<void> {
-    if (this.engine) {
-      await this.engine.resetChat();
+    if (this.provider) {
+      await this.provider.reset();
     }
   }
 }
