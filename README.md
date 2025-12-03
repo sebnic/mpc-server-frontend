@@ -86,19 +86,22 @@ sequenceDiagram
     end
 ```
 
-## 📋 Prérequis
+## 📍 Prérequis
 
-**Important** : Node.js >= 18.0.0 est requis (actuellement vous utilisez Node 14.20.0)
+**Node.js** : Compatible avec Node 14.18+ (actuellement configuré pour Node 14.20.8)
 
-Pour mettre à jour Node.js, vous pouvez utiliser :
+**⚠️ Note importante** :
+- ✅ **Node 14.x** : Fonctionne parfaitement avec **Gemini API** (provider recommandé)
+- ⚠️ **Node 14.x** : WebLLM peut avoir des problèmes de function calling
+- ✅ **Node 18+** : Tous les providers fonctionnent complètement
+
+**Recommandation** : Utilisez **Gemini comme provider par défaut** avec Node 14, ou mettez à jour vers Node 18+ si vous souhaitez utiliser WebLLM.
+
 ```bash
+# Pour mettre à jour vers Node 18+ (optionnel)
 # Avec nvm (recommandé)
 nvm install 18
 nvm use 18
-
-# Ou avec n
-npm install -g n
-n stable
 ```
 
 ## 🚀 Installation
@@ -261,18 +264,20 @@ Ce POC démontre que :
 
 ## 🔑 Configuration des LLM Providers
 
-### WebLLM (Local)
+### Gemini (API) ⭐ **Recommandé**
+- **Prérequis** : Clé API Google (gratuite sur https://makersuite.google.com/app/apikey)
+- **Configuration** : Dans `.env` (variable `VITE_GEMINI_API_KEY`)
+- **Avantages** : Rapide, puissant, pas de téléchargement, **fonctionne parfaitement avec Node 14**
+- **Inconvénients** : Nécessite Internet, quotas API
+- **Statut** : ✅ **Pleinement opérationnel avec function calling**
+
+### WebLLM (Local) ⚠️ **Expérimental avec Node 14**
 - **Prérequis** : WebGPU (Chrome 113+, Edge, ou Firefox avec flag)
 - **Premier lancement** : Télécharge ~1GB (mis en cache ensuite)
 - **Configuration** : Optionnelle dans `.env` (variable `VITE_WEBLLM_MODEL`)
 - **Avantages** : 100% local, privé, gratuit
-- **Inconvénients** : Nécessite WebGPU, plus lent
-
-### Gemini (API)
-- **Prérequis** : Clé API Google (gratuite sur https://makersuite.google.com/app/apikey)
-- **Configuration** : Dans `.env` (variable `VITE_GEMINI_API_KEY`)
-- **Avantages** : Rapide, puissant, pas de téléchargement
-- **Inconvénients** : Nécessite Internet, quotas API
+- **Inconvénients** : Nécessite WebGPU, plus lent, **problèmes de function calling avec Node 14**
+- **Statut** : ⚠️ Fonctionne mieux avec Node 18+ (recommandé uniquement pour tests)
 
 ### Obtenir une clé API Gemini
 

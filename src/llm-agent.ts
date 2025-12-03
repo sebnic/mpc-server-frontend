@@ -62,7 +62,9 @@ If you don't need a tool, respond normally in natural language.
 
 IMPORTANT: 
 - When you use a tool, respond with ONLY the JSON, nothing else
-- After receiving the tool result, provide a natural language response to the user`;
+- After receiving the tool result, you MUST provide a natural language response to the user incorporating the tool result
+- DO NOT call the same tool again after receiving its result
+- Your response after receiving a tool result should be conversational and helpful`;
   }
 
   async chat(userMessage: string): Promise<string> {
@@ -129,6 +131,7 @@ IMPORTANT:
             role: 'user',
             content: `Tool result: ${resultText}. Now provide a natural language response to the user.`,
           });
+          console.log('[Agent] 🔄 Added tool result to history, continuing to next iteration...');
         } catch (error: any) {
           this.conversationHistory.push({
             role: 'assistant',
@@ -149,6 +152,7 @@ IMPORTANT:
       }
     }
 
+    console.log('[Agent] ⚠️ Max iterations reached without final response');
     return 'I apologize, but I reached the maximum number of tool calls. Please try rephrasing your question.';
   }
 
