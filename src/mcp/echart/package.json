@@ -1,0 +1,15 @@
+{
+  "name": "@mcp/echart-server",
+  "version": "1.0.0",
+  "description": "MCP Server for generating ECharts configurations",
+  "type": "module",
+  "main": "echart-server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node ../../dist/mcp/echart/echart-server.js",
+    "test": "npm run build && node ../../dist/mcp/echart/test-server.js"
+  },
+  "keywords": ["mcp", "echart", "charts", "visualization"],
+  "author": "",
+  "license": "MIT"
+}

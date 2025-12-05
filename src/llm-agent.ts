@@ -53,10 +53,26 @@ ${toolDescriptions}
 When you need to use a tool, respond with ONLY a JSON object in this exact format:
 {"tool": "tool_name", "arguments": {"arg1": "value1"}}
 
-For example:
+Examples:
 - To get the time: {"tool": "get_time", "arguments": {}}
 - To echo: {"tool": "echo", "arguments": {"message": "hello"}}
 - To calculate: {"tool": "calculate", "arguments": {"operation": "add", "a": 5, "b": 3}}
+
+CHART GENERATION WORKFLOW:
+For chart requests, you can follow this efficient workflow:
+
+1. QUICK PATH (if you already know the chart type and structure):
+   - Line chart: {"tool": "generate_line_chart", "arguments": {"title": "Sales", "xAxisData": ["Jan", "Feb", "Mar"], "series": [{"name": "2024", "data": [100, 200, 150]}]}}
+   - Bar chart: {"tool": "generate_bar_chart", "arguments": {"title": "Revenue", "xAxisData": ["Q1", "Q2"], "series": [{"name": "Product A", "data": [500, 600]}]}}
+   - Pie chart: {"tool": "generate_pie_chart", "arguments": {"title": "Market Share", "data": [{"name": "A", "value": 30}, {"name": "B", "value": 70}]}}
+   - Pie with colors: {"tool": "generate_pie_chart", "arguments": {"title": "Distribution", "data": [{"name": "Red", "value": 45, "color": "red"}]}}
+
+2. DISCOVERY PATH (if you need to explore available chart types):
+   - First: {"tool": "get_chart_types", "arguments": {}} → Discover all available chart types
+   - Then: {"tool": "get_chart_config_schema", "arguments": {"chartType": "line"}} → Get detailed schema for specific type
+   - Finally: Use the appropriate generate_xxx_chart tool with the learned schema
+
+RECOMMENDATION: Use QUICK PATH for common charts (line/bar/pie). Use DISCOVERY PATH when user asks for unusual charts or you need to confirm capabilities.
 
 If you don't need a tool, respond normally in natural language.
 
@@ -64,7 +80,8 @@ IMPORTANT:
 - When you use a tool, respond with ONLY the JSON, nothing else
 - After receiving the tool result, you MUST provide a natural language response to the user incorporating the tool result
 - DO NOT call the same tool again after receiving its result
-- Your response after receiving a tool result should be conversational and helpful`;
+- Your response after receiving a tool result should be conversational and helpful
+- For chart requests, analyze what type of chart is most appropriate (line/bar/pie) and structure the data accordingly`;
   }
 
   async chat(userMessage: string): Promise<string> {
@@ -121,6 +138,23 @@ IMPORTANT:
           });
           const resultText =
             toolResult.content?.[0]?.text || JSON.stringify(toolResult);
+
+          // For chart generation tools, return the result directly
+          if (toolCall.name.startsWith('generate_') && toolCall.name.includes('_chart')) {
+            console.log('[Agent] 📊 Chart tool detected, returning config directly');
+            console.log('[Agent] 📊 Tool result text:', resultText);
+            console.log('[Agent] 📊 Tool result length:', resultText.length);
+            console.log('[Agent] 📊 First 200 chars:', resultText.substring(0, 200));
+            this.conversationHistory.push({
+              role: 'assistant',
+              content: response,
+            });
+            this.conversationHistory.push({
+              role: 'assistant',
+              content: resultText,
+            });
+            return resultText;
+          }
 
           // Add tool result to conversation
           this.conversationHistory.push({

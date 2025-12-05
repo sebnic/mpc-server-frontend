@@ -1,0 +1,820 @@
+import { MCPBrowserClient } from './client.js';
+import { ConfigManager } from './config-manager.js';
+import './style.css';
+
+const app = document.querySelector<HTMLDivElement>('#app')!;
+
+app.innerHTML = `
+  <div class="container">
+    <h1>🚀 MCP Server in Browser POC</h1>
+    <p class="subtitle">Model Context Protocol running in a Web Worker</p>
+    
+    <div class="status">
+      <span id="status">Disconnected</span>
+    </div>
+
+    <div class="section">
+      <button id="connectBtn" class="btn btn-primary">Connect to Server</button>
+      <button id="disconnectBtn" class="btn btn-secondary" disabled>Disconnect</button>
+    </div>
+
+    <div id="toolsSection" class="section" style="display: none;">
+      <h2>Available Tools</h2>
+      <div id="toolsList"></div>
+    </div>
+
+    <div id="testSection" class="section" style="display: none;">
+      <h2>Test Tools</h2>
+
+      <div class="test-card llm-card">
+        <h3>🤖 LLM Provider</h3>
+        <div class="llm-info">
+          <p><strong>Status:</strong> <span id="llmStatus">Not Initialized</span></p>
+          <div id="llmProgress" class="progress-bar" style="display: none;">
+            <div class="progress-fill" id="llmProgressFill"></div>
+            <span class="progress-text" id="llmProgressText">Initializing...</span>
+          </div>
+        </div>
+        
+        <div class="provider-selection">
+          <label>
+            <input type="radio" name="provider" value="webllm" checked />
+            <strong>WebLLM</strong> (Local - Llama 3.2 1B, ~1GB download)
+          </label>
+          <label>
+            <input type="radio" name="provider" value="gemini" />
+            <strong>Gemini</strong> (API - requires API key)
+          </label>
+        </div>
+        
+        <div id="geminiConfig" style="display: none; margin-top: 0.5rem;">
+          <input type="password" id="geminiApiKey" placeholder="Enter Gemini API Key" style="width: 100%; margin-bottom: 0.5rem;" />
+          <input type="text" id="geminiModel" placeholder="Model (default: gemini-1.5-flash)" style="width: 100%;" />
+        </div>
+        
+        <button class="btn btn-primary" id="llmInitBtn">Initialize LLM</button>
+        <button class="btn" id="llmStatusBtn">Check Status</button>
+        
+        <div id="llmChatSection" style="display: none; margin-top: 1rem;">
+          <h4>💬 Simple Chat (LLM only)</h4>
+          <textarea id="llmPrompt" placeholder="Ask the LLM anything..." rows="2"></textarea>
+          <button class="btn btn-primary" id="llmChatBtn">Send to LLM</button>
+          <div class="result" id="llmResult"></div>
+        </div>
+      </div>
+
+      <div class="test-card agent-card" id="agentSection" style="display: none;">
+        <h3>🧠 AI Agent (LLM + MCP Tools)</h3>
+        <p class="agent-description">
+          This agent can use MCP tools (get_time, calculate, echo) to answer your questions!
+        </p>
+        <div class="agent-examples">
+          <strong>Try asking:</strong>
+          <ul>
+            <li>"What time is it?"</li>
+            <li>"Calculate 23 times 45"</li>
+            <li>"What time is it and what's 10 plus 5?"</li>
+          </ul>
+        </div>
+        <textarea id="agentPrompt" placeholder="Ask the agent anything. It can use tools to help answer!" rows="3"></textarea>
+        <button class="btn btn-primary" id="agentChatBtn">Ask Agent</button>
+        <button class="btn" id="agentResetBtn">Reset Conversation</button>
+        <div class="result" id="agentResult"></div>
+      </div>
+      
+      <div class="test-card">
+        <h3>Get Time</h3>
+        <button class="btn" id="getTimeBtn">Get Current Time</button>
+        <div class="result" id="timeResult"></div>
+      </div>
+
+      <div class="test-card">
+        <h3>Echo</h3>
+        <input type="text" id="echoInput" placeholder="Enter a message" />
+        <button class="btn" id="echoBtn">Echo Message</button>
+        <div class="result" id="echoResult"></div>
+      </div>
+
+      <div class="test-card">
+        <h3>Calculate</h3>
+        <div class="calc-inputs">
+          <input type="number" id="calcA" placeholder="Number A" value="10" />
+          <select id="calcOp">
+            <option value="add">+</option>
+            <option value="subtract">-</option>
+            <option value="multiply">×</option>
+            <option value="divide">÷</option>
+          </select>
+          <input type="number" id="calcB" placeholder="Number B" value="5" />
+        </div>
+        <button class="btn" id="calcBtn">Calculate</button>
+        <div class="result" id="calcResult"></div>
+      </div>
+
+      <div class="test-card echart-card">
+        <h3>📊 ECharts Generator with AI</h3>
+        <p>Describe the chart you want, and the AI will generate it for you!</p>
+        
+        <div class="chart-prompt-section">
+          <label for="chartPrompt"><strong>Describe your chart:</strong></label>
+          <textarea 
+            id="chartPrompt" 
+            placeholder="Example: Create a line chart showing monthly sales from January to June with values 120, 200, 150, 180, 220, 250"
+            rows="3"
+          ></textarea>
+          <button class="btn btn-primary" id="generateChartBtn">🎨 Generate Chart with AI</button>
+        </div>
+        
+        <div class="chart-divider">
+          <span>OR try these examples</span>
+        </div>
+        
+        <div class="chart-examples">
+          <button class="btn btn-small" id="exampleLine">📈 Sales Example</button>
+          <button class="btn btn-small" id="exampleBar">📊 Revenue Example</button>
+          <button class="btn btn-small" id="examplePie">🥧 Market Share Example</button>
+          <button class="btn btn-small" id="testDiscovery">🔍 Test Discovery (Hierarchy)</button>
+        </div>
+        
+        <div id="chartDisplay" class="chart-container" style="display: none;">
+          <div id="chartCanvas" style="width: 100%; height: 400px;"></div>
+        </div>
+        
+        <details class="chart-config">
+          <summary>View Configuration JSON</summary>
+          <pre id="chartConfigJson"></pre>
+        </details>
+        
+        <details class="chart-debug">
+          <summary>🐛 Debug: View Agent Response</summary>
+          <pre id="chartDebugResponse"></pre>
+        </details>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Console</h2>
+      <div id="console" class="console"></div>
+    </div>
+  </div>
+`;
+
+// Initialize client
+let client: MCPBrowserClient | null = null;
+
+// Initialize configuration on startup
+ConfigManager.initialize().then(async () => {
+  const config = await ConfigManager.getConfig();
+  console.log('[App] Configuration loaded');
+  
+  // Pre-select default provider
+  const defaultProvider = config.defaultProvider;
+  const providerRadio = document.querySelector(
+    `input[name="provider"][value="${defaultProvider}"]`
+  ) as HTMLInputElement;
+  if (providerRadio) {
+    providerRadio.checked = true;
+  }
+  
+  // Pre-fill Gemini config if available
+  if (config.gemini.apiKey) {
+    (document.getElementById('geminiApiKey') as HTMLInputElement).value = config.gemini.apiKey;
+    (document.getElementById('geminiModel') as HTMLInputElement).placeholder = config.gemini.model;
+    log('Gemini API key loaded from configuration', 'info');
+  }
+  
+  // Show Gemini config if it's the default
+  if (defaultProvider === 'gemini') {
+    document.getElementById('geminiConfig')!.style.display = 'block';
+  }
+});
+
+// Helper function to log to console
+function log(message: string, type: 'info' | 'error' | 'success' = 'info') {
+  const consoleDiv = document.getElementById('console')!;
+  const entry = document.createElement('div');
+  entry.className = `console-entry console-${type}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  consoleDiv.appendChild(entry);
+  consoleDiv.scrollTop = consoleDiv.scrollHeight;
+}
+
+// Handle provider selection
+document.querySelectorAll('input[name="provider"]').forEach((radio) => {
+  radio.addEventListener('change', (e) => {
+    const provider = (e.target as HTMLInputElement).value;
+    const geminiConfig = document.getElementById('geminiConfig')!;
+    geminiConfig.style.display = provider === 'gemini' ? 'block' : 'none';
+  });
+});
+
+// Listen for LLM progress updates
+function setupLLMProgressListener() {
+  if (client && (client as any).worker) {
+    (client as any).worker.addEventListener('message', (event: MessageEvent) => {
+      console.log('[Main] Worker message:', event.data);
+      
+      if (event.data.type === 'llm_progress') {
+        const progressBar = document.getElementById('llmProgress')!;
+        const progressFill = document.getElementById('llmProgressFill')!;
+        const progressText = document.getElementById('llmProgressText')!;
+        
+        progressBar.style.display = 'block';
+        progressFill.style.width = `${event.data.data.progress * 100}%`;
+        progressText.textContent = event.data.data.text;
+        
+        log(`LLM Progress: ${Math.round(event.data.data.progress * 100)}% - ${event.data.data.text}`, 'info');
+        
+        if (event.data.data.progress >= 1) {
+          setTimeout(() => {
+            progressBar.style.display = 'none';
+          }, 2000);
+        }
+      }
+    });
+  }
+}
+
+// Connect button
+document.getElementById('connectBtn')!.addEventListener('click', async () => {
+  try {
+    log('Connecting to MCP Server...');
+    client = new MCPBrowserClient();
+    await client.connect();
+    
+    setupLLMProgressListener();
+    
+    document.getElementById('status')!.textContent = 'Connected ✓';
+    document.getElementById('status')!.className = 'connected';
+    (document.getElementById('connectBtn') as HTMLButtonElement).disabled = true;
+    (document.getElementById('disconnectBtn') as HTMLButtonElement).disabled = false;
+    
+    log('Connected successfully!', 'success');
+    
+    // List tools
+    const tools = await client.listTools();
+    log(`Found ${tools.length} tools`, 'success');
+    
+    const toolsList = document.getElementById('toolsList')!;
+    toolsList.innerHTML = tools
+      .map(
+        (tool) => `
+        <div class="tool-item">
+          <strong>${tool.name}</strong>: ${tool.description}
+        </div>
+      `
+      )
+      .join('');
+    
+    document.getElementById('toolsSection')!.style.display = 'block';
+    document.getElementById('testSection')!.style.display = 'block';
+  } catch (error) {
+    log(`Connection failed: ${error}`, 'error');
+    console.error(error);
+  }
+});
+
+// Disconnect button
+document.getElementById('disconnectBtn')!.addEventListener('click', async () => {
+  try {
+    if (client) {
+      await client.disconnect();
+      client = null;
+    }
+    
+    document.getElementById('status')!.textContent = 'Disconnected';
+    document.getElementById('status')!.className = '';
+    (document.getElementById('connectBtn') as HTMLButtonElement).disabled = false;
+    (document.getElementById('disconnectBtn') as HTMLButtonElement).disabled = true;
+    
+    document.getElementById('toolsSection')!.style.display = 'none';
+    document.getElementById('testSection')!.style.display = 'none';
+    
+    log('Disconnected', 'info');
+  } catch (error) {
+    log(`Disconnect failed: ${error}`, 'error');
+  }
+});
+
+// Get Time button
+document.getElementById('getTimeBtn')!.addEventListener('click', async () => {
+  try {
+    log('Calling get_time tool...');
+    const result = await client!.callTool('get_time');
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    document.getElementById('timeResult')!.textContent = text;
+    log(`Result: ${text}`, 'success');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+// Echo button
+document.getElementById('echoBtn')!.addEventListener('click', async () => {
+  try {
+    const message = (document.getElementById('echoInput') as HTMLInputElement).value;
+    log(`Calling echo tool with: "${message}"`);
+    const result = await client!.callTool('echo', { message });
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    document.getElementById('echoResult')!.textContent = text;
+    log(`Result: ${text}`, 'success');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+// Calculate button
+document.getElementById('calcBtn')!.addEventListener('click', async () => {
+  try {
+    const a = parseFloat((document.getElementById('calcA') as HTMLInputElement).value);
+    const b = parseFloat((document.getElementById('calcB') as HTMLInputElement).value);
+    const operation = (document.getElementById('calcOp') as HTMLSelectElement).value;
+    
+    log(`Calling calculate tool: ${a} ${operation} ${b}`);
+    const result = await client!.callTool('calculate', { operation, a, b });
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    document.getElementById('calcResult')!.textContent = text;
+    log(`Result: ${text}`, 'success');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+// LLM Initialize button
+document.getElementById('llmInitBtn')!.addEventListener('click', async () => {
+  try {
+    const provider = (document.querySelector('input[name="provider"]:checked') as HTMLInputElement).value;
+    const args: any = { provider };
+    
+    if (provider === 'gemini') {
+      let apiKey = (document.getElementById('geminiApiKey') as HTMLInputElement).value;
+      const model = (document.getElementById('geminiModel') as HTMLInputElement).value;
+      
+      // If no API key in field, try to get from config
+      if (!apiKey) {
+        apiKey = await ConfigManager.getGeminiApiKey();
+      } else {
+        // Save the new API key to encrypted config
+        await ConfigManager.setGeminiApiKey(apiKey);
+      }
+      
+      if (!apiKey) {
+        log('Please enter a Gemini API key or configure it in .env', 'error');
+        return;
+      }
+      
+      args.apiKey = apiKey;
+      
+      // Use model from config if not specified
+      if (model) {
+        args.model = model;
+      } else {
+        const config = await ConfigManager.getConfig();
+        args.model = config.gemini.model;
+      }
+      
+      log('Initializing Gemini provider...');
+    } else {
+      const config = await ConfigManager.getConfig();
+      args.model = config.webllm.model;
+      log('Initializing WebLLM... This may take a while (downloading ~1GB model)');
+    }
+    
+    document.getElementById('llmStatus')!.textContent = 'Initializing...';
+    (document.getElementById('llmInitBtn') as HTMLButtonElement).disabled = true;
+    
+    const result = await client!.callTool('llm_initialize', args);
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    
+    document.getElementById('llmStatus')!.textContent = 'Ready ✓';
+    document.getElementById('llmStatus')!.style.color = '#16a34a';
+    document.getElementById('llmChatSection')!.style.display = 'block';
+    document.getElementById('agentSection')!.style.display = 'block';
+    
+    log(`LLM: ${text}`, 'success');
+  } catch (error) {
+    log(`LLM Error: ${error}`, 'error');
+    document.getElementById('llmStatus')!.textContent = 'Failed';
+    (document.getElementById('llmInitBtn') as HTMLButtonElement).disabled = false;
+  }
+});
+
+// LLM Status button
+document.getElementById('llmStatusBtn')!.addEventListener('click', async () => {
+  try {
+    const result = await client!.callTool('llm_status');
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    log(`LLM Status: ${text}`, 'info');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+// LLM Chat button
+document.getElementById('llmChatBtn')!.addEventListener('click', async () => {
+  try {
+    const prompt = (document.getElementById('llmPrompt') as HTMLTextAreaElement).value;
+    if (!prompt.trim()) {
+      log('Please enter a prompt', 'error');
+      return;
+    }
+    
+    log(`Sending to LLM: "${prompt}"`);
+    document.getElementById('llmResult')!.textContent = 'Thinking...';
+    (document.getElementById('llmChatBtn') as HTMLButtonElement).disabled = true;
+    
+    const result = await client!.callTool('llm_chat', { prompt });
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    
+    document.getElementById('llmResult')!.textContent = text;
+    log(`LLM Response received`, 'success');
+    (document.getElementById('llmChatBtn') as HTMLButtonElement).disabled = false;
+  } catch (error) {
+    log(`LLM Error: ${error}`, 'error');
+    document.getElementById('llmResult')!.textContent = `Error: ${error}`;
+    (document.getElementById('llmChatBtn') as HTMLButtonElement).disabled = false;
+  }
+});
+
+// Agent Chat button
+document.getElementById('agentChatBtn')!.addEventListener('click', async () => {
+  try {
+    const message = (document.getElementById('agentPrompt') as HTMLTextAreaElement).value;
+    if (!message.trim()) {
+      log('Please enter a message', 'error');
+      return;
+    }
+    
+    log(`Asking agent: "${message}"`);
+    document.getElementById('agentResult')!.textContent = 'Agent thinking and using tools...';
+    (document.getElementById('agentChatBtn') as HTMLButtonElement).disabled = true;
+    
+    const result = await client!.callTool('agent_chat', { message });
+    const text = result.content[0].type === 'text' ? result.content[0].text : '';
+    
+    document.getElementById('agentResult')!.textContent = text;
+    log(`Agent response received`, 'success');
+    (document.getElementById('agentChatBtn') as HTMLButtonElement).disabled = false;
+  } catch (error) {
+    log(`Agent Error: ${error}`, 'error');
+    document.getElementById('agentResult')!.textContent = `Error: ${error}`;
+    (document.getElementById('agentChatBtn') as HTMLButtonElement).disabled = false;
+  }
+});
+
+// Agent Reset button
+document.getElementById('agentResetBtn')!.addEventListener('click', async () => {
+  try {
+    await client!.callTool('agent_reset');
+    document.getElementById('agentResult')!.textContent = '';
+    (document.getElementById('agentPrompt') as HTMLTextAreaElement).value = '';
+    log('Agent conversation reset', 'success');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+// ECharts functionality
+async function renderChart(toolName: string, args: any) {
+  try {
+    log(`Generating ${toolName}...`);
+    const result = await client!.callTool(toolName, args);
+    const configText = result.content[0].type === 'text' ? result.content[0].text : '{}';
+    const config = JSON.parse(configText);
+    
+    // Display config JSON
+    document.getElementById('chartConfigJson')!.textContent = JSON.stringify(config, null, 2);
+    
+    // Import and render chart
+    const echarts = await import('echarts');
+    const chartDisplay = document.getElementById('chartDisplay')!;
+    const chartCanvas = document.getElementById('chartCanvas')!;
+    
+    chartDisplay.style.display = 'block';
+    
+    // Initialize chart
+    const chart = echarts.init(chartCanvas);
+    chart.setOption(config);
+    
+    // Handle window resize
+    window.addEventListener('resize', () => chart.resize());
+    
+    log('Chart generated successfully!', 'success');
+  } catch (error) {
+    log(`Chart generation error: ${error}`, 'error');
+  }
+}
+
+// Generate Chart with AI button
+document.getElementById('generateChartBtn')!.addEventListener('click', async () => {
+  try {
+    const prompt = (document.getElementById('chartPrompt') as HTMLTextAreaElement).value;
+    if (!prompt.trim()) {
+      log('Please enter a chart description', 'error');
+      return;
+    }
+    
+    // Check if the prompt seems to be about charts
+    const chartKeywords = [
+      'chart', 'graphique', 'graph', 'diagramme', 'courbe', 'histogramme',
+      'pie', 'line', 'bar', 'camembert', 'circulaire', 'barre', 'ligne',
+      'plot', 'visuali', 'données', 'data', 'valeur', 'value'
+    ];
+    const promptLower = prompt.toLowerCase();
+    const containsChartKeyword = chartKeywords.some(keyword => promptLower.includes(keyword));
+    
+    log(`AI generating chart: "${prompt}"`);
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).disabled = true;
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).textContent = '🤖 Generating...';
+    
+    let enhancedPrompt: string;
+    
+    if (!containsChartKeyword) {
+      // Request is not about charts - ask LLM to respond with humor
+      enhancedPrompt = `L'utilisateur a demandé: "${prompt}"
+
+Cependant, ce système est spécialisé UNIQUEMENT dans la création de graphiques ECharts (line chart, bar chart, pie chart).
+
+Réponds avec humour en expliquant poliment que tu ne peux créer que des graphiques ECharts, et propose un lien créatif ou humoristique entre leur demande et les graphiques.
+
+Exemples:
+- Si on demande une recette → "Je ne suis qu'un humble créateur de graphiques ECharts 📊! Mais je pourrais vous faire un joli pie chart des proportions d'ingrédients... si vous m'en donnez les valeurs! 🥧"
+- Si on demande la météo → "Je ne prédis pas la météo, mais je peux tracer un line chart des températures si vous me donnez les données! ☀️📈"
+
+Sois créatif et sympathique!`;
+    } else {
+      // Normal chart request
+      enhancedPrompt = `Create a chart based on this request: ${prompt}
+
+IMPORTANT: You MUST use one of these MCP tools:
+- generate_line_chart (for trends over time)
+- generate_bar_chart (for comparisons)  
+- generate_pie_chart (for proportions/percentages)
+
+After using the tool, just return the exact JSON configuration you received, nothing else.`;
+    }
+    
+    const result = await client!.callTool('agent_chat', { message: enhancedPrompt });
+    const responseText = result.content[0].type === 'text' ? result.content[0].text : '';
+    
+    // Check if LLM is not initialized
+    if (responseText.includes('LLM not initialized') || responseText.includes('Agent Error')) {
+      log('❌ LLM not initialized!', 'error');
+      log('⚠️ Please initialize the LLM first:', 'error');
+      log('1. Choose a provider (Gemini recommended)', 'info');
+      log('2. Enter your API key if using Gemini', 'info');
+      log('3. Click "Initialize LLM" and wait for "Ready" status', 'info');
+      (document.getElementById('generateChartBtn') as HTMLButtonElement).disabled = false;
+      (document.getElementById('generateChartBtn') as HTMLButtonElement).textContent = '🎨 Generate Chart with AI';
+      return;
+    }
+    
+    // Show response in debug section
+    document.getElementById('chartDebugResponse')!.textContent = responseText;
+    
+    console.log('[Chart Generation] ===== DEBUG INFO =====');
+    console.log('[Chart Generation] Response type:', result.content[0].type);
+    console.log('[Chart Generation] Response length:', responseText.length);
+    console.log('[Chart Generation] Response chars breakdown:');
+    for (let i = 0; i < Math.min(responseText.length, 50); i++) {
+      console.log(`  [${i}]: "${responseText[i]}" (code: ${responseText.charCodeAt(i)})`);
+    }
+    console.log('[Chart Generation] First 300 chars:', responseText.substring(0, 300));
+    console.log('[Chart Generation] Last 300 chars:', responseText.substring(Math.max(0, responseText.length - 300)));
+    console.log('[Chart Generation] Full response:');
+    console.log(responseText);
+    
+    // Try multiple strategies to extract JSON configuration
+    let config: any = null;
+    
+    console.log('[Chart Generation] 🔍 Extracting JSON from response...');
+    
+    // Strategy 1: Try direct parse first (fastest)
+    try {
+      const trimmed = responseText.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (parsed.series || parsed.title || parsed.data || parsed.xAxis || parsed.yAxis)) {
+          config = parsed;
+          console.log('[Chart Generation] ✅ Direct parse succeeded!');
+        }
+      }
+    } catch (e) {
+      console.log('[Chart Generation] Direct parse failed:', e);
+    }
+    
+    // Strategy 2: Extract JSON by matching balanced braces
+    if (!config) {
+      console.log('[Chart Generation] Trying balanced brace extraction...');
+      const firstBrace = responseText.indexOf('{');
+      if (firstBrace !== -1) {
+        let braceCount = 0;
+        let inString = false;
+        let escaped = false;
+        let jsonEnd = -1;
+        
+        for (let i = firstBrace; i < responseText.length; i++) {
+          const char = responseText[i];
+          
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escaped = true;
+            continue;
+          }
+          
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') braceCount++;
+            if (char === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (jsonEnd !== -1) {
+          const jsonStr = responseText.substring(firstBrace, jsonEnd);
+          console.log('[Chart Generation] Extracted JSON:', jsonStr.substring(0, 200) + '...');
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed && (parsed.series || parsed.title || parsed.data || parsed.xAxis || parsed.yAxis)) {
+              config = parsed;
+              console.log('[Chart Generation] ✅ Balanced brace extraction succeeded!');
+            }
+          } catch (e) {
+            console.log('[Chart Generation] Balanced brace parse failed:', e);
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Try to find JSON with code blocks (```json ... ```)
+    if (!config) {
+      console.log('[Chart Generation] Trying code block extraction...');
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (codeBlockMatch) {
+        try {
+          const parsed = JSON.parse(codeBlockMatch[1]);
+          if (parsed && (parsed.series || parsed.title || parsed.data || parsed.xAxis || parsed.yAxis)) {
+            config = parsed;
+            console.log('[Chart Generation] ✅ Code block extraction succeeded!');
+          }
+        } catch (e) {
+          console.log('[Chart Generation] Code block parse failed:', e);
+        }
+      }
+    }
+    
+    if (config) {
+      console.log('[Chart Generation] 🎨 Rendering chart with config:', config);
+      
+      // Display config JSON
+      document.getElementById('chartConfigJson')!.textContent = JSON.stringify(config, null, 2);
+      
+      // Import and render chart
+      const echarts = await import('echarts');
+      const chartDisplay = document.getElementById('chartDisplay')!;
+      const chartCanvas = document.getElementById('chartCanvas')!;
+      
+      console.log('[Chart Generation] Chart container:', {
+        display: chartDisplay,
+        canvas: chartCanvas,
+        width: chartCanvas.offsetWidth,
+        height: chartCanvas.offsetHeight,
+      });
+      
+      chartDisplay.style.display = 'block';
+      
+      // Wait for DOM to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('[Chart Generation] After display block:', {
+        width: chartCanvas.offsetWidth,
+        height: chartCanvas.offsetHeight,
+      });
+      
+      // Clear and initialize chart
+      const chartElement = chartCanvas as HTMLElement;
+      const existingChart = echarts.getInstanceByDom(chartElement);
+      if (existingChart) {
+        console.log('[Chart Generation] Disposing existing chart');
+        existingChart.dispose();
+      }
+      
+      console.log('[Chart Generation] Initializing ECharts...');
+      const chart = echarts.init(chartElement);
+      console.log('[Chart Generation] Setting option...');
+      chart.setOption(config);
+      console.log('[Chart Generation] Chart rendered!');
+      
+      // Ensure chart resizes with window
+      window.addEventListener('resize', () => {
+        console.log('[Chart Generation] Window resized, updating chart');
+        chart.resize();
+      });
+      
+      log('✨ Chart generated successfully by AI!', 'success');
+    } else {
+      // No chart config found - this might be a humorous response for off-topic request
+      console.log('[Chart Generation] ❌ Config extraction failed. containsChartKeyword:', containsChartKeyword);
+      console.log('[Chart Generation] Response was:', responseText);
+      
+      if (!containsChartKeyword) {
+        // Display the LLM's humorous response
+        log('🤖 ' + responseText, 'info');
+      } else {
+        // This was supposed to be a chart but extraction failed
+        log('AI response: ' + responseText.substring(0, 200) + '...', 'info');
+        log('Could not extract chart configuration.', 'error');
+        log('💡 Tips: Be specific about chart type (line/bar/pie) and provide data values.', 'info');
+        log('💡 Check the "🐛 Debug: View Agent Response" section below for the full response.', 'info');
+      }
+    }
+    
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).disabled = false;
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).textContent = '🎨 Generate Chart with AI';
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).disabled = false;
+    (document.getElementById('generateChartBtn') as HTMLButtonElement).textContent = '🎨 Generate Chart with AI';
+  }
+});
+
+// Example buttons
+document.getElementById('exampleLine')!.addEventListener('click', () => {
+  renderChart('generate_line_chart', {
+    title: 'Monthly Sales 2024-2025',
+    xAxisData: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    series: [
+      { name: '2024', data: [120, 132, 101, 134, 90, 230] },
+      { name: '2025', data: [220, 182, 191, 234, 290, 330] }
+    ]
+  });
+});
+
+document.getElementById('exampleBar')!.addEventListener('click', () => {
+  renderChart('generate_bar_chart', {
+    title: 'Quarterly Revenue',
+    xAxisData: ['Q1', 'Q2', 'Q3', 'Q4'],
+    series: [
+      { name: 'Product A', data: [150, 230, 224, 218] },
+      { name: 'Product B', data: [120, 132, 101, 134] }
+    ]
+  });
+});
+
+document.getElementById('examplePie')!.addEventListener('click', () => {
+  renderChart('generate_pie_chart', {
+    title: 'Market Share 2025',
+    data: [
+      { name: 'Product A', value: 335 },
+      { name: 'Product B', value: 234 },
+      { name: 'Product C', value: 158 },
+      { name: 'Product D', value: 147 },
+      { name: 'Others', value: 126 }
+    ]
+  });
+});
+
+// Test Discovery button - demonstrates hierarchy
+document.getElementById('testDiscovery')!.addEventListener('click', async () => {
+  try {
+    log('🔍 Step 1: Discovering available chart types...');
+    const typesResult = await client!.callTool('get_chart_types', {});
+    const typesText = typesResult.content[0].type === 'text' ? typesResult.content[0].text : '{}';
+    log('📋 Available types: ' + JSON.parse(typesText).types.map((t: any) => t.name).join(', '), 'success');
+    
+    log('🔍 Step 2: Getting detailed schema for "pie" chart...');
+    const schemaResult = await client!.callTool('get_chart_config_schema', { chartType: 'pie' });
+    const schemaText = schemaResult.content[0].type === 'text' ? schemaResult.content[0].text : '{}';
+    const schema = JSON.parse(schemaText);
+    log('📐 Schema retrieved. Tool to use: ' + schema.tool, 'success');
+    
+    log('🔍 Step 3: Generating pie chart using discovered schema...');
+    await renderChart('generate_pie_chart', {
+      title: 'Discovery Demo',
+      data: [
+        { name: 'Step 1: Discovery', value: 30, color: 'blue' },
+        { name: 'Step 2: Schema', value: 30, color: 'green' },
+        { name: 'Step 3: Generation', value: 40, color: 'orange' }
+      ]
+    });
+    
+    log('✅ Hierarchy demonstration complete! Check logs to see the 3-step flow.', 'success');
+  } catch (error) {
+    log(`Error: ${error}`, 'error');
+  }
+});
+
+log('Application ready. Click "Connect to Server" to start.');

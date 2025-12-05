@@ -127,7 +127,7 @@ cp .env.example .env
 ```env
 # Gemini Configuration
 VITE_GEMINI_API_KEY=votre_clé_api_gemini_ici
-VITE_GEMINI_MODEL=gemini-1.5-flash
+VITE_GEMINI_MODEL=gemini-pro
 
 # WebLLM Configuration (optionnel)
 VITE_WEBLLM_MODEL=Llama-3.2-1B-Instruct-q4f32_1-MLC
@@ -186,6 +186,37 @@ Le serveur MCP implémente plusieurs outils de démonstration :
 7. **echo** : Répète un message
 8. **calculate** : Effectue des calculs simples (add, subtract, multiply, divide)
 
+### 📊 Outils ECharts (Visualisation) ✨ NOUVEAU
+
+#### Découverte Hiérarchique (Token-Efficient)
+9. **get_chart_types** : Liste tous les types de graphiques disponibles (line, bar, pie, scatter, radar, gauge, funnel, heatmap)
+10. **get_chart_config_schema** : Obtient le schéma détaillé pour un type de graphique spécifique
+
+#### Génération de Graphiques
+11. **generate_line_chart** : Génère une configuration pour un graphique en ligne
+12. **generate_bar_chart** : Génère une configuration pour un graphique en barres
+13. **generate_pie_chart** : Génère une configuration pour un graphique circulaire (support des couleurs personnalisées)
+
+**Génération par IA** 🎨 :
+- **Décrivez votre graphique en langage naturel** et l'IA le génère automatiquement !
+- Exemple : "Crée un graphique en ligne montrant les ventes de janvier à juin : 120, 200, 150, 180, 220, 250"
+- L'agent utilise la découverte hiérarchique (33-56% moins de tokens) :
+  - **Quick Path** : Si le type est connu → génération directe
+  - **Discovery Path** : get_chart_types → get_chart_config_schema → generate
+- Rendu direct dans le navigateur avec echarts@6.0
+
+**Fonctionnalités** :
+- Interface interactive avec prompt texte pour génération IA
+- Boutons d'exemple pour démarrage rapide
+- Détection automatique de demandes hors-sujet avec réponses humoristiques
+- Visualisation immédiate du graphique
+- Vue de la configuration JSON générée
+- Support des couleurs personnalisées pour les pie charts
+
+📖 **Guides détaillés** : 
+- [AI_CHART_GENERATION.md](./AI_CHART_GENERATION.md) - Guide d'utilisation
+- [HIERARCHY_DEMO.md](./HIERARCHY_DEMO.md) - Système de découverte hiérarchique
+
 ### 📊 Logging et Débogage
 
 Le système inclut un logging détaillé pour suivre les interactions entre le LLM agent et les outils MCP :
@@ -209,12 +240,57 @@ Le système inclut un logging détaillé pour suivre les interactions entre le L
 
 ```
 src/
-├── transport.ts      # Implémentation du transport Web Worker
-├── worker.ts         # Serveur MCP dans le Worker
-├── client.ts         # Client MCP pour la page principale
-├── main.ts           # Application principale
-└── style.css         # Styles
+├── transport.ts              # Implémentation du transport Web Worker
+├── worker.ts                 # Serveur MCP dans le Worker (132 lignes, refactorisé)
+├── client.ts                 # Client MCP pour la page principale
+├── main.ts                   # Application principale (28 lignes, refactorisé)
+├── llm-service.ts            # Service de gestion des LLM providers
+├── llm-agent.ts              # Agent IA avec function calling
+├── crypto-service.ts         # Chiffrement AES-GCM pour les clés API
+├── config-manager.ts         # Gestion de la configuration
+├── ui/                       # 🆕 Modules UI (refactorisation)
+│   ├── logger.ts             # Classe Logger pour les messages UI
+│   ├── html-template.ts      # Template HTML séparé de la logique
+│   ├── event-handlers.ts     # Tous les gestionnaires d'événements
+│   └── style.css             # Styles de l'interface utilisateur
+├── charts/                   # 🆕 Module de gestion des graphiques
+│   └── chart-handler.ts      # Logique de génération et rendu ECharts
+├── providers/
+│   ├── llm-provider.interface.ts
+│   ├── webllm-provider.ts
+│   └── gemini-provider.ts
+└── mcp/                      # 🆕 Serveurs MCP modulaires
+    ├── index.ts              # Export central de tous les serveurs
+    ├── README.md             # Documentation de l'architecture MCP
+    ├── basic-tools/          # Outils utilitaires (time, echo, calculate)
+    │   ├── basic-tools-server.ts
+    │   └── README.md
+    ├── llm/                  # Outils LLM (initialize, status, chat)
+    │   ├── llm-server.ts
+    │   └── README.md
+    ├── agent/                # Agent IA avec function calling
+    │   ├── agent-server.ts
+    │   └── README.md
+    ├── echart/               # Serveur ECharts
+    │   ├── echart-tools.ts   # Outils pour intégration browser
+    │   ├── echart-server.ts  # Serveur standalone
+    │   ├── test-server.ts
+    │   ├── README.md
+    │   └── STANDALONE.md
+    └── chart-discovery/      # Documentation hiérarchie découverte
+        └── README.md
 ```
+
+### 🎯 Architecture Refactorisée
+
+Le projet a été entièrement refactorisé pour une meilleure maintenabilité :
+
+- **main.ts** : 821 lignes → **28 lignes** (97% de réduction)
+- **worker.ts** : 843 lignes → **132 lignes** (84% de réduction)
+- **Code modulaire** : Chaque serveur MCP dans son propre dossier
+- **Documentation complète** : README dans chaque module
+
+📖 Voir [REFACTORING.md](./REFACTORING.md) pour les détails de la refactorisation
 
 ## 🔑 Points Clés de l'Implémentation
 
@@ -225,13 +301,66 @@ Le fichier `transport.ts` implémente l'interface `Transport` du SDK MCP pour ut
 - `WorkerServerTransport` : Côté serveur (dans le Worker)
 - `WorkerClientTransport` : Côté client (page principale)
 
+### Architecture Modulaire MCP
+
+Le projet utilise une architecture modulaire pour organiser les serveurs MCP :
+
+```typescript
+// Chaque module expose son schéma et son handler
+export function getToolsSchema() { return [...]; }
+export function handleTool(name, args, deps) {
+  // Retourne null si tool non reconnu
+  if (name === 'my_tool') return result;
+  return null;
+}
+```
+
+**Avantages** :
+- ✅ **Séparation des responsabilités** : Chaque serveur dans son module
+- ✅ **Réutilisabilité** : Modules exportables et testables indépendamment
+- ✅ **Maintenabilité** : Code organisé, facile à naviguer et modifier
+- ✅ **Extensibilité** : Ajout de nouveaux serveurs sans toucher aux existants
+
+**Organisation** :
+- `src/mcp/basic-tools/` : Outils utilitaires (time, echo, calculate)
+- `src/mcp/llm/` : Gestion des providers LLM
+- `src/mcp/agent/` : Agent IA avec function calling
+- `src/mcp/echart/` : Génération de graphiques ECharts
+- `src/mcp/index.ts` : Export central de tous les modules
+
 ### Serveur MCP
 
-Le `worker.ts` crée un serveur MCP standard avec nos outils personnalisés.
+Le `worker.ts` orchestre tous les handlers de manière élégante :
+
+```typescript
+async function handleToolCall(request) {
+  // Essaie chaque handler dans l'ordre
+  const basicResult = handleBasicTool(name, args);
+  if (basicResult) return basicResult;
+
+  const llmResult = await handleLLMTool(name, args, llmService);
+  if (llmResult) return llmResult;
+
+  const agentResult = await handleAgentTool(name, args, agent, tools);
+  if (agentResult) return agentResult;
+  
+  // etc...
+  
+  throw new Error(`Unknown tool: ${name}`);
+}
+```
 
 ### Client MCP
 
 Le `client.ts` encapsule la logique de connexion au Worker et l'appel des outils.
+
+### Interface Utilisateur
+
+L'UI est maintenant organisée en modules distincts :
+- `ui/logger.ts` : Logging des messages UI avec horodatage
+- `ui/html-template.ts` : Template HTML séparé de la logique
+- `ui/event-handlers.ts` : Gestionnaires d'événements organisés par catégorie
+- `charts/chart-handler.ts` : Logique de génération et rendu de graphiques
 
 ## ✅ Résultat
 
@@ -246,6 +375,9 @@ Ce POC démontre que :
 - ✅ **Multi-provider** : Support de WebLLM (local) et Gemini API avec architecture extensible
 - ✅ **Sécurité** : Clés API cryptées avec AES-GCM-256
 - ✅ **Observabilité** : Logging détaillé pour déboguer le function calling
+- ✅ **Architecture modulaire** : Serveurs MCP organisés en modules réutilisables
+- ✅ **Token-efficient** : Découverte hiérarchique des outils (33-56% d'économie)
+- ✅ **Maintenabilité** : Code refactorisé avec réduction de 84-97% de lignes dans les fichiers principaux
 
 ## 🚧 Limitations
 
@@ -261,6 +393,9 @@ Ce POC démontre que :
 - Tests MCP sans backend
 - **Assistants IA 100% locaux et privés (pas de serveur externe)**
 - **Applications offline-first avec IA intégrée**
+- **Dashboards intelligents avec génération de graphiques par IA**
+- **Outils d'analyse de données interactifs**
+- **Serveurs MCP réutilisables** (chaque module peut être extrait et utilisé standalone)
 
 ## 🔑 Configuration des LLM Providers
 
